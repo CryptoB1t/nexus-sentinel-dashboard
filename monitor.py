@@ -180,6 +180,25 @@ def set_notifications_enabled(enabled: bool) -> None:
 
 # --- Per-ID monitoring (ps aux) -----------------------------------------------
 
+
+def find_nexus_binary() -> Optional[str]:
+    result = subprocess.run(
+        ["which", "nexus-network"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    candidates = [
+        "/root/.nexus/bin/nexus-network",
+        "/usr/local/bin/nexus-network",
+        os.path.expanduser("~/.nexus/bin/nexus-network"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def is_node_running(node_id: str) -> bool:
     """
     Node is ONLINE if ps aux has a line containing BOTH "nexus" AND node_id.
