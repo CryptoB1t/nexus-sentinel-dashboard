@@ -92,7 +92,3 @@ nexus-sentinel/
     ├── settings.json         # Bot settings (notifications toggle)
     └── nexus_watch.log       # Bot log file
 ```
-
-## License
-
-MIT
