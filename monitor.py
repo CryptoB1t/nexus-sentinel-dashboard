@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 Nexus Ultimate Dashboard & Self-Healing Sentinel
-
-Premium Telegram UX + per-ID precise monitoring + smart cooldown system.
 """
 
 import json
@@ -200,7 +198,7 @@ def is_node_running(node_id: str) -> bool:
             timeout=5,
         )
         ps_output = (result.stdout or "") + (result.stderr or "")
-    except Exception:  # noqa: BLE001
+    except Exception:  
         ps_output = ""
 
     for line in ps_output.splitlines():
