@@ -5,7 +5,11 @@
 **Nexus Sentinel** is a professional, open-source Telegram management suite designed specifically for the final sprint of **Nexus Testnet III**. It ensures your nodes maintain 100% uptime through intelligent monitoring and autonomous self-healing.
 
 ## 📸 Dashboard Preview
-
+<p align="center">
+  <img src="NexSD1.jpg" width="250" />
+  <img src="NexSD2.jpg" width="250" />
+  <img src="NexSD3.jpg" width="250" />
+</p>
 
 ## 🚀 Key Features
 - **✅ Smart Monitoring:** Real-time process tracking by Node ID using `ps aux` and `screen -ls`.
