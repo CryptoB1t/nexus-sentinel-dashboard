@@ -6,9 +6,9 @@
 
 ## 📸 Dashboard Preview
 <p align="center">
-  <img src="NexSD1.jpg" width="250" />
-  <img src="NexSD2.jpg" width="250" />
-  <img src="NexSD3.jpg" width="250" />
+  <img src="NexSD1.jpg" height="400" />
+  <img src="NexSD2.jpg" height="400" />
+  <img src="NexSD3.jpg" height="400" />
 </p>
 
 ## 🚀 Key Features
