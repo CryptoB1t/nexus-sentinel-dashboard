@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 Nexus Ultimate Dashboard & Self-Healing Sentinel
-
-Premium Telegram UX + per-ID precise monitoring + smart cooldown system.
 """
 
 import json
@@ -18,24 +16,31 @@ from typing import Dict, List, Optional, Tuple
 
 import psutil
 import telebot
+from dotenv import load_dotenv
 from telebot import types
+
+# Load .env file
+load_dotenv()
 
 
 # --- Configuration -----------------------------------------------------------
 
-TELEGRAM_BOT_TOKEN = ""
-ADMIN_CHAT_ID = ""
+TELEGRAM_BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
+ADMIN_CHAT_ID: str = os.environ["ADMIN_CHAT_ID"]
 
-LOG_FILE = "nexus_watch.log"
-NODES_FILE = "nodes_list.txt"
-SETTINGS_FILE = "settings.json"
+_DATA_DIR = os.environ.get("DATA_DIR", "data")
+LOG_FILE = os.path.join(_DATA_DIR, "nexus_watch.log")
+NODES_FILE = os.path.join(_DATA_DIR, "nodes_list.txt")
+SETTINGS_FILE = os.path.join(_DATA_DIR, "settings.json")
 
-CHECK_INTERVAL_SECONDS = 30
-COOLDOWN_SECONDS = 600  # 10 minutes per-ID
+CHECK_INTERVAL_SECONDS: int = int(os.environ.get("CHECK_INTERVAL_SECONDS", "30"))
+COOLDOWN_SECONDS: int = int(os.environ.get("COOLDOWN_SECONDS", "600"))
 
 RESTART_CMD_PREFIX = ["screen", "-dmS"]
 
-NEXUS_PATH = "/root/.nexus/bin/nexus-network"
+
+# Ensure data directory exists at startup
+os.makedirs(_DATA_DIR, exist_ok=True)
 
 
 # --- Logging ----------------------------------------------------------------
@@ -174,6 +179,63 @@ def set_notifications_enabled(enabled: bool) -> None:
 
 # --- Per-ID monitoring (ps aux) -----------------------------------------------
 
+
+def _find_nexus_binary() -> Optional[str]:
+    """
+    Resolve the nexus-network binary path.
+    Priority:
+      1. NEXUS_PATH env var (explicit override)
+      2. which (binary on PATH)
+      3. Common install locations
+      4. Recursive search under home directories (slow, last resort)
+    """
+    # 1. Explicit env override
+    env_path = os.environ.get("NEXUS_PATH", "")
+    if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+        return env_path
+
+    # 2. On PATH
+    try:
+        result = subprocess.run(
+            ["which", "nexus-network"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+
+    # 3. Common install locations
+    candidates = [
+        "/root/.nexus/bin/nexus-network",
+        "/usr/local/bin/nexus-network",
+        "/usr/bin/nexus-network",
+        os.path.expanduser("~/.nexus/bin/nexus-network"),
+        os.path.expanduser("~/nexus-network"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+
+    # 4. Search all home directories
+    try:
+        result = subprocess.run(
+            ["find", "/home", "/root", "-name", "nexus-network", "-type", "f"],
+            capture_output=True, text=True, timeout=15
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line and os.access(line, os.X_OK):
+                return line
+    except Exception:
+        pass
+
+    return None
+
+
+NEXUS_PATH: str = _find_nexus_binary() or ""
+
+
 def is_node_running(node_id: str) -> bool:
     """
     Node is ONLINE if ps aux has a line containing BOTH "nexus" AND node_id.
@@ -192,17 +254,15 @@ def is_node_running(node_id: str) -> bool:
             timeout=5,
         )
         ps_output = (result.stdout or "") + (result.stderr or "")
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  
         ps_output = ""
 
     for line in ps_output.splitlines():
         if "monitor.py" in line:
             continue
         if "nexus" in line.lower() and node_id in line:
-            logging.info("[DEBUG] Node ID %s... Found in ps aux (Online)", node_id)
             return True
 
-    logging.info("[DEBUG] Node ID %s... Not found in ps aux (Offline)", node_id)
     return False
 
 
@@ -212,6 +272,8 @@ def is_node_online(node_id: str) -> bool:
 
 
 def restart_node(node_id: str) -> Tuple[bool, str]:
+    if not NEXUS_PATH:
+        return False, "nexus-network binary not found. Set NEXUS_PATH in .env."
     cmd = [
         *RESTART_CMD_PREFIX,
         f"nexus_{node_id}",
@@ -246,17 +308,19 @@ def get_system_resources() -> Dict[str, str]:
     }
 
 
+# --- Log reading -------------------------------------------------------------
+
 EMPTY_LOGS_MSG = "📋 Logs are currently empty."
 
-# View Logs: try nexus node log first, then bot log in current folder
+# View Logs: try nexus node log first, then bot log in data folder
 _LOG_SOURCES = [
     "/root/.nexus/network-api/nexus.log",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)) or ".", LOG_FILE),
+    LOG_FILE,
 ]
 
 
 def _get_log_file_for_read() -> Optional[str]:
-    """First existing log file: nexus.log or nexus_watch.log in bot folder."""
+    """First existing log file: nexus.log or nexus_watch.log in data folder."""
     for path in _LOG_SOURCES:
         if os.path.isfile(path):
             return path
@@ -266,7 +330,7 @@ def _get_log_file_for_read() -> Optional[str]:
 def get_logs(node_id: Optional[str] = None, max_lines: int = 15) -> str:
     """
     Read last max_lines from log file.
-    Tries /root/.nexus/network-api/nexus.log, then nexus_watch.log in bot folder.
+    Tries /root/.nexus/network-api/nexus.log, then nexus_watch.log in data folder.
     If node_id given, filter lines containing that ID.
     If file missing or empty, return EMPTY_LOGS_MSG.
     """
@@ -449,6 +513,9 @@ def cmd_add(message: types.Message) -> None:
         bot.reply_to(message, mdv2_escape("Usage: /add <ID>"))
         return
     node_id = parts[1].strip()
+    if not re.fullmatch(r"\d{8}", node_id):
+        bot.reply_to(message, mdv2_escape("Invalid node ID. Must be exactly 8 digits."))
+        return
     ok, info = add_node(node_id)
     status = "✅" if ok else "ℹ️"
     bot.reply_to(
@@ -473,6 +540,9 @@ def cmd_remove(message: types.Message) -> None:
         bot.reply_to(message, mdv2_escape("Usage: /remove <ID>"))
         return
     node_id = parts[1].strip()
+    if not re.fullmatch(r"\d{8}", node_id):
+        bot.reply_to(message, mdv2_escape("Invalid node ID. Must be exactly 8 digits."))
+        return
     ok, info = remove_node(node_id)
     status = "✅" if ok else "❌"
     bot.reply_to(
@@ -521,7 +591,6 @@ def on_callback(call: types.CallbackQuery) -> None:
             )
         elif data == "menu:settings":
             bot.answer_callback_query(call.id)
-            # Escape paths for Markdown V2 (dots, slashes in /root/.nexus/ etc.)
             nodes_file_esc = mdv2_escape(NODES_FILE)
             log_file_esc = mdv2_escape(LOG_FILE)
             text = "\n".join(
@@ -648,7 +717,23 @@ def main() -> None:
     setup_logging()
 
     print("🛡 Nexus Ultimate Dashboard & Self-Healing Sentinel is online.")
-    logging.info("Bot starting (admin_chat_id=%s, NEXUS_PATH=%s).", ADMIN_CHAT_ID, NEXUS_PATH)
+
+    if NEXUS_PATH:
+        logging.info("Bot starting (admin_chat_id=%s, NEXUS_PATH=%s).", ADMIN_CHAT_ID, NEXUS_PATH)
+    else:
+        logging.error(
+            "nexus-network binary not found. Auto-restart will not work. "
+            "Set NEXUS_PATH in .env to the correct path."
+        )
+        try:
+            bot.send_message(
+                ADMIN_CHAT_ID,
+                mdv2_escape("⚠️ nexus-network binary not found. "
+                            "Auto-restart is disabled. "
+                            "Set NEXUS_PATH in .env and restart the service.")
+            )
+        except Exception:
+            pass
 
     ensure_nodes_file_exists()
 

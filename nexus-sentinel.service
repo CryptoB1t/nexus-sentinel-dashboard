@@ -1,0 +1,22 @@
+[Unit]
+Description=Nexus Ultimate Dashboard & Self-Healing Sentinel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nexus-sentinel
+
+# Load .env file variables
+EnvironmentFile=/opt/nexus-sentinel/.env
+
+ExecStart=/opt/nexus-sentinel/.venv/bin/python -u monitor.py
+Restart=on-failure
+RestartSec=10
+
+# Logging goes to journald (use: journalctl -u nexus-sentinel -f)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
