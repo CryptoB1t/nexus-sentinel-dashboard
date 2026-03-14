@@ -38,7 +38,6 @@ COOLDOWN_SECONDS: int = int(os.environ.get("COOLDOWN_SECONDS", "600"))
 
 RESTART_CMD_PREFIX = ["screen", "-dmS"]
 
-NEXUS_PATH: str = os.environ.get("NEXUS_PATH", "/root/.nexus/bin/nexus-network")
 
 # Ensure data directory exists at startup
 os.makedirs(_DATA_DIR, exist_ok=True)
@@ -181,22 +180,60 @@ def set_notifications_enabled(enabled: bool) -> None:
 # --- Per-ID monitoring (ps aux) -----------------------------------------------
 
 
-def find_nexus_binary() -> Optional[str]:
-    result = subprocess.run(
-        ["which", "nexus-network"],
-        capture_output=True, text=True
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
+def _find_nexus_binary() -> Optional[str]:
+    """
+    Resolve the nexus-network binary path.
+    Priority:
+      1. NEXUS_PATH env var (explicit override)
+      2. which (binary on PATH)
+      3. Common install locations
+      4. Recursive search under home directories (slow, last resort)
+    """
+    # 1. Explicit env override
+    env_path = os.environ.get("NEXUS_PATH", "")
+    if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+        return env_path
+
+    # 2. On PATH
+    try:
+        result = subprocess.run(
+            ["which", "nexus-network"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+
+    # 3. Common install locations
     candidates = [
         "/root/.nexus/bin/nexus-network",
         "/usr/local/bin/nexus-network",
+        "/usr/bin/nexus-network",
         os.path.expanduser("~/.nexus/bin/nexus-network"),
+        os.path.expanduser("~/nexus-network"),
     ]
     for path in candidates:
         if os.path.isfile(path) and os.access(path, os.X_OK):
             return path
+
+    # 4. Search all home directories
+    try:
+        result = subprocess.run(
+            ["find", "/home", "/root", "-name", "nexus-network", "-type", "f"],
+            capture_output=True, text=True, timeout=15
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line and os.access(line, os.X_OK):
+                return line
+    except Exception:
+        pass
+
     return None
+
+
+NEXUS_PATH: str = _find_nexus_binary() or ""
 
 
 def is_node_running(node_id: str) -> bool:
@@ -235,6 +272,8 @@ def is_node_online(node_id: str) -> bool:
 
 
 def restart_node(node_id: str) -> Tuple[bool, str]:
+    if not NEXUS_PATH:
+        return False, "nexus-network binary not found. Set NEXUS_PATH in .env."
     cmd = [
         *RESTART_CMD_PREFIX,
         f"nexus_{node_id}",
@@ -470,11 +509,13 @@ def cmd_add(message: types.Message) -> None:
     if deny_if_not_admin(message):
         return
     parts = (message.text or "").split(maxsplit=1)
-    if len(parts) != 8 and int(parts):
+    if len(parts) < 2:
         bot.reply_to(message, mdv2_escape("Usage: /add <ID>"))
         return
-    
     node_id = parts[1].strip()
+    if not re.fullmatch(r"\d{8}", node_id):
+        bot.reply_to(message, mdv2_escape("Invalid node ID. Must be exactly 8 digits."))
+        return
     ok, info = add_node(node_id)
     status = "✅" if ok else "ℹ️"
     bot.reply_to(
@@ -495,10 +536,13 @@ def cmd_remove(message: types.Message) -> None:
     if deny_if_not_admin(message):
         return
     parts = (message.text or "").split(maxsplit=1)
-    if len(parts) != 8:
+    if len(parts) < 2:
         bot.reply_to(message, mdv2_escape("Usage: /remove <ID>"))
         return
     node_id = parts[1].strip()
+    if not re.fullmatch(r"\d{8}", node_id):
+        bot.reply_to(message, mdv2_escape("Invalid node ID. Must be exactly 8 digits."))
+        return
     ok, info = remove_node(node_id)
     status = "✅" if ok else "❌"
     bot.reply_to(
@@ -673,7 +717,23 @@ def main() -> None:
     setup_logging()
 
     print("🛡 Nexus Ultimate Dashboard & Self-Healing Sentinel is online.")
-    logging.info("Bot starting (admin_chat_id=%s, NEXUS_PATH=%s).", ADMIN_CHAT_ID, NEXUS_PATH)
+
+    if NEXUS_PATH:
+        logging.info("Bot starting (admin_chat_id=%s, NEXUS_PATH=%s).", ADMIN_CHAT_ID, NEXUS_PATH)
+    else:
+        logging.error(
+            "nexus-network binary not found. Auto-restart will not work. "
+            "Set NEXUS_PATH in .env to the correct path."
+        )
+        try:
+            bot.send_message(
+                ADMIN_CHAT_ID,
+                mdv2_escape("⚠️ nexus-network binary not found. "
+                            "Auto-restart is disabled. "
+                            "Set NEXUS_PATH in .env and restart the service.")
+            )
+        except Exception:
+            pass
 
     ensure_nodes_file_exists()
 
