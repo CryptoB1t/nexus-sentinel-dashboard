@@ -27,7 +27,7 @@ A self-healing Telegram bot that monitors your [Nexus Network](https://nexus.xyz
 
 ```bash
 git clone https://github.com/CryptoB1t/nexus-sentinel-dashboard
-cd nexus-sentinel
+cd nexus-sentinel-dashboard
 chmod +x deploy.sh
 ./deploy.sh
 ```
