@@ -1,7 +1,12 @@
 # Nexus Sentinel
 
 A self-healing Telegram bot that monitors your [Nexus Network](https://nexus.xyz) nodes, alerts you when they go down, and automatically restarts them via `screen`.
-
+## 📸 Dashboard Preview
+<p align="center">
+  <img src="NexSD1.jpg" height="400" />
+  <img src="NexSD2.jpg" height="400" />
+  <img src="NexSD3.jpg" height="400" />
+</p>
 ## Features
 
 - **Per-node monitoring** — checks each node independently via `ps aux`
