@@ -33,7 +33,7 @@ chmod +x deploy.sh
 ```
 
 `deploy.sh` will:
-1. Open `.env` in `nano` — fill in your bot token and chat ID, then save and exit
+1. Help setup .env file
 2. Create a Python virtual environment and install Python dependencies
 3. Patch the systemd service file with your actual install path
 4. Register and start the service
