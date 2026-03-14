@@ -2,8 +2,33 @@
 set -e
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+#Check dependencies
  
-# ── Configure .env ────────────────────────────────────────────────────────────
+echo ""
+echo "=== Checking dependencies ==="
+echo ""
+ 
+MISSING=()
+command -v python3 &>/dev/null || MISSING+=("python3")
+python3 -m venv --help &>/dev/null || MISSING+=("python3-venv")
+command -v screen &>/dev/null || MISSING+=("screen")
+ 
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "Missing dependencies: ${MISSING[*]}"
+    echo ""
+    echo "Please install them manually before running this script:"
+    echo ""
+    echo "  Debian/Ubuntu:  sudo apt install ${MISSING[*]}"
+    echo "  Arch/CachyOS:   sudo pacman -S ${MISSING[*]}"
+    echo "  Fedora:         sudo dnf install ${MISSING[*]}"
+    echo ""
+    exit 1
+fi
+
+echo "All found"
+ 
+# Configure .env 
  
 echo ""
 echo "=== Nexus Sentinel Setup ==="
@@ -29,7 +54,7 @@ EOF
 echo ""
 echo ".env saved."
  
-# ── Python setup ──────────────────────────────────────────────────────────────
+# Python setup
  
 python3 -m venv "$INSTALL_DIR/.venv"
 "$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/requirements.txt"
