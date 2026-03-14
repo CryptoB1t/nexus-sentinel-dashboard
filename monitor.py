@@ -450,14 +450,6 @@ def format_logs_message() -> str:
     )
 
 
-def is_integer(s):
-    try:
-        int(s)
-        return True
-    except ValueError:
-        return False
-
-
 @bot.message_handler(commands=["start"])
 def cmd_start(message: types.Message) -> None:
     if deny_if_not_admin(message):
@@ -478,7 +470,7 @@ def cmd_add(message: types.Message) -> None:
     if deny_if_not_admin(message):
         return
     parts = (message.text or "").split(maxsplit=1)
-    if len(parts) != 8 and is_integer(parts):
+    if len(parts) != 8 and int(parts):
         bot.reply_to(message, mdv2_escape("Usage: /add <ID>"))
         return
     
